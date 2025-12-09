@@ -1,861 +1,885 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Alchemmy AI Pilot Survey</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
+import React, { useState, useEffect } from 'react';
+import { ChevronRight, ChevronLeft, Download, BarChart3, Users } from 'lucide-react';
+
+const AlchemmmySurvey = () => {
+  const [currentPage, setCurrentPage] = useState(0);
+  const [responses, setResponses] = useState({});
+  const [viewMode, setViewMode] = useState('survey'); // 'survey' or 'results'
+  const [allResponses, setAllResponses] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [userName, setUserName] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+
+  // Load all responses for results view
+  const loadAllResponses = async () => {
+    setLoading(true);
+    try {
+      const keys = await window.storage.list('alchemmy-survey:', true);
+      const responseData = [];
+      
+      for (const key of keys.keys) {
+        try {
+          const result = await window.storage.get(key, true);
+          if (result && result.value) {
+            responseData.push(JSON.parse(result.value));
+          }
+        } catch (err) {
+          console.log('Key not found:', key);
         }
-        .animate-in { animation: slideIn 0.5s ease-out; }
-    </style>
-</head>
-<body class="bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
-    <div id="app"></div>
+      }
+      
+      setAllResponses(responseData);
+    } catch (error) {
+      console.error('Error loading responses:', error);
+    }
+    setLoading(false);
+  };
 
-    <script>
-        // Simple state management
-        let state = {
-            currentPage: 0,
-            responses: {},
-            viewMode: 'survey',
-            userName: '',
-            submitted: false,
-            allResponses: [],
-            loading: false
-        };
+  // Save response to storage
+  const saveResponse = async () => {
+    if (!userName.trim()) {
+      alert('Please enter your name before submitting');
+      return;
+    }
 
-        // Storage functions using localStorage as fallback
-        const storage = {
-            async set(key, value) {
-                try {
-                    localStorage.setItem(key, value);
-                    return true;
-                } catch (e) {
-                    console.error('Storage error:', e);
-                    return false;
-                }
-            },
-            async get(key) {
-                try {
-                    return localStorage.getItem(key);
-                } catch (e) {
-                    console.error('Storage error:', e);
-                    return null;
-                }
-            },
-            async list(prefix) {
-                try {
-                    const keys = [];
-                    for (let i = 0; i < localStorage.length; i++) {
-                        const key = localStorage.key(i);
-                        if (key.startsWith(prefix)) {
-                            keys.push(key);
-                        }
-                    }
-                    return keys;
-                } catch (e) {
-                    console.error('Storage error:', e);
-                    return [];
-                }
-            }
-        };
+    setLoading(true);
+    try {
+      const responseData = {
+        name: userName,
+        timestamp: new Date().toISOString(),
+        responses: responses
+      };
+      
+      const key = `alchemmy-survey:${Date.now()}-${userName.replace(/\s+/g, '-')}`;
+      await window.storage.set(key, JSON.stringify(responseData), true);
+      
+      setSubmitted(true);
+      alert('Survey submitted successfully! Thank you for your participation.');
+    } catch (error) {
+      console.error('Error saving response:', error);
+      alert('Error saving response. Please try again.');
+    }
+    setLoading(false);
+  };
 
-        // Load all responses
-        async function loadAllResponses() {
-            state.loading = true;
-            render();
-            
-            const keys = await storage.list('alchemmy-survey:');
-            const responseData = [];
-            
-            for (const key of keys) {
-                const data = await storage.get(key);
-                if (data) {
-                    try {
-                        responseData.push(JSON.parse(data));
-                    } catch (e) {
-                        console.error('Parse error:', e);
-                    }
-                }
-            }
-            
-            state.allResponses = responseData;
-            state.loading = false;
-            render();
-        }
+  const updateResponse = (question, value) => {
+    setResponses(prev => ({ ...prev, [question]: value }));
+  };
 
-        // Save response
-        async function saveResponse() {
-            if (!state.userName.trim()) {
-                alert('Please enter your name before submitting');
-                return;
-            }
+  // Export to CSV with proper formatting
+  const exportToCSV = () => {
+    // Define headers as first row
+    const headers = [
+      'Name',
+      'Submission Date',
+      'Submission Time',
+      'Deck Creation Time (hrs)',
+      'Report Writing Time (hrs/wk)',
+      'Proposal Time (hrs)',
+      'Data Prep Time (hrs/wk)',
+      'Strategic Work (%)',
+      'Repetitive Work (%)',
+      'Tool Effectiveness Rating',
+      'Revision Percentage Required',
+      'Admin Time (hrs/wk)',
+      'AI Confidence (1-5)',
+      'Biggest Workflow Tasks',
+      'Biggest Obstacles',
+      'Tasks to Streamline',
+      'Overwhelmed Areas',
+      'Additional Comments'
+    ];
 
-            state.loading = true;
-            render();
+    // Create data rows starting from row 2
+    const rows = allResponses.map(r => {
+      const submissionDate = new Date(r.timestamp);
+      return [
+        r.name,
+        submissionDate.toLocaleDateString('en-GB'),
+        submissionDate.toLocaleTimeString('en-GB'),
+        r.responses.deckTime || '',
+        r.responses.reportTime || '',
+        r.responses.proposalTime || '',
+        r.responses.dataTime || '',
+        r.responses.strategicPercent || '',
+        r.responses.repetitivePercent || '',
+        r.responses.toolEffectiveness || '',
+        r.responses.revisionPercent || '',
+        r.responses.adminTime || '',
+        r.responses.aiConfidence || '',
+        `"${(r.responses.workflowTasks || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
+        `"${(r.responses.obstacles || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
+        `"${(r.responses.streamlineTasks || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
+        `"${(r.responses.overwhelmedAreas || []).join('; ')}"`,
+        `"${(r.responses.additionalComments || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`
+      ];
+    });
 
-            const responseData = {
-                name: state.userName,
-                timestamp: new Date().toISOString(),
-                responses: state.responses
-            };
-            
-            const key = `alchemmy-survey:${Date.now()}-${state.userName.replace(/\\s+/g, '-')}`;
-            const success = await storage.set(key, JSON.stringify(responseData));
-            
-            if (success) {
-                state.submitted = true;
-                alert('Survey submitted successfully! Thank you for your participation.');
-            } else {
-                alert('Error saving response. Please try again.');
-            }
-            
-            state.loading = false;
-            render();
-        }
+    // Combine headers and rows
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    
+    // Create and download file
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `alchemmy-survey-results-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
 
-        // Export to CSV
-        function exportToCSV() {
-            const headers = [
-                'Name', 'Submission Date',
-                'Deck Time (hrs)', 'Report Time (hrs/wk)', 'Proposal Time (hrs)', 
-                'Data Time (hrs/wk)', 'Strategic %', 'Repetitive %',
-                'Tool Effectiveness', 'Revision %', 'Admin Time (hrs/wk)',
-                'AI Confidence (1-5)', 'Workflow Tasks', 'Obstacles', 
-                'Tasks to Streamline', 'Overwhelmed Areas', 'Additional Comments'
-            ];
+  // Calculate statistics
+  const calculateStats = () => {
+    if (allResponses.length === 0) return null;
 
-            const rows = state.allResponses.map(r => [
-                r.name,
-                new Date(r.timestamp).toLocaleDateString(),
-                r.responses.deckTime || '',
-                r.responses.reportTime || '',
-                r.responses.proposalTime || '',
-                r.responses.dataTime || '',
-                r.responses.strategicPercent || '',
-                r.responses.repetitivePercent || '',
-                r.responses.toolEffectiveness || '',
-                r.responses.revisionPercent || '',
-                r.responses.adminTime || '',
-                r.responses.aiConfidence || '',
-                `"${(r.responses.workflowTasks || '').replace(/"/g, '""')}"`,
-                `"${(r.responses.obstacles || '').replace(/"/g, '""')}"`,
-                `"${(r.responses.streamlineTasks || '').replace(/"/g, '""')}"`,
-                `"${(r.responses.overwhelmedAreas || []).join('; ')}"`,
-                `"${(r.responses.additionalComments || '').replace(/"/g, '""')}"`
-            ]);
+    const avgDeckTime = allResponses.filter(r => r.responses.deckTime).reduce((sum, r) => sum + parseFloat(r.responses.deckTime), 0) / allResponses.filter(r => r.responses.deckTime).length;
+    const avgDataTime = allResponses.filter(r => r.responses.dataTime).reduce((sum, r) => sum + parseFloat(r.responses.dataTime), 0) / allResponses.filter(r => r.responses.dataTime).length;
+    const avgProposalTime = allResponses.filter(r => r.responses.proposalTime).reduce((sum, r) => sum + parseFloat(r.responses.proposalTime), 0) / allResponses.filter(r => r.responses.proposalTime).length;
+    const avgAdminTime = allResponses.filter(r => r.responses.adminTime).reduce((sum, r) => sum + parseFloat(r.responses.adminTime), 0) / allResponses.filter(r => r.responses.adminTime).length;
+    const avgAIConfidence = allResponses.filter(r => r.responses.aiConfidence).reduce((sum, r) => sum + parseInt(r.responses.aiConfidence), 0) / allResponses.filter(r => r.responses.aiConfidence).length;
 
-            const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\\n');
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `alchemmy-survey-results-${new Date().toISOString().split('T')[0]}.csv`;
-            a.click();
-        }
+    return {
+      avgDeckTime: avgDeckTime.toFixed(1),
+      avgDataTime: avgDataTime.toFixed(1),
+      avgProposalTime: avgProposalTime.toFixed(1),
+      avgAdminTime: avgAdminTime.toFixed(1),
+      avgAIConfidence: avgAIConfidence.toFixed(1)
+    };
+  };
 
-        // Calculate statistics
-        function calculateStats() {
-            if (state.allResponses.length === 0) return null;
+  const pages = [
+    // Introduction Page
+    {
+      type: 'intro',
+      content: (
+        <div className="space-y-6">
+          <div className="bg-gradient-to-r from-cyan-500 to-blue-500 p-8 rounded-lg text-white">
+            <h1 className="text-4xl font-bold mb-2">Alchemmy AI Pilot</h1>
+            <p className="text-xl opacity-90">Baseline Productivity Survey</p>
+          </div>
+          
+          <div className="bg-white p-6 rounded-lg shadow-sm border-l-4 border-cyan-500">
+            <h2 className="text-2xl font-semibold text-gray-800 mb-4">Welcome to the AI Pilot Programme</h2>
+            <p className="text-gray-700 mb-4">
+              Alchemmy is embarking on a 6-month AI pilot to maximise efficiency, boost productivity, and future-proof our workforce for the AI era. This pilot will test enterprise LLM solutions (ChatGPT, TeamGPT, and Claude) to determine their impact on our consulting workflows.
+            </p>
+            <div className="bg-cyan-50 p-4 rounded-md mb-4">
+              <h3 className="font-semibold text-cyan-900 mb-2">Our Strategic Objectives:</h3>
+              <ul className="space-y-2 text-gray-700">
+                <li className="flex items-start">
+                  <span className="text-cyan-500 mr-2">•</span>
+                  <span><strong>Automate Repetitive Workflows:</strong> Achieve a 20% reduction in time spent on low-value tasks</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-cyan-500 mr-2">•</span>
+                  <span><strong>Foster AI Competence:</strong> Ensure all staff become AI literate through hands-on experience</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-cyan-500 mr-2">•</span>
+                  <span><strong>Establish IP-Informed Workflows:</strong> Leverage company knowledge to enhance LLM outputs</span>
+                </li>
+              </ul>
+            </div>
+            <p className="text-gray-700 mb-4">
+              <strong>Purpose of this survey:</strong> To capture baseline productivity metrics before the pilot begins. Your responses will be compared with follow-up data collected at the pilot's conclusion to measure impact and inform our business case for wider rollout.
+            </p>
+            <p className="text-sm text-gray-600 italic">
+              Estimated completion time: 8-10 minutes
+            </p>
+          </div>
 
-            const getAvg = (field) => {
-                const values = state.allResponses.filter(r => r.responses[field]).map(r => parseFloat(r.responses[field]));
-                return values.length > 0 ? (values.reduce((a, b) => a + b, 0) / values.length).toFixed(1) : 'N/A';
-            };
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <label className="block text-lg font-semibold text-gray-800 mb-4">
+              Please enter your name to begin:
+              <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
+              placeholder="Your full name"
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
+            />
+          </div>
+        </div>
+      )
+    },
+    
+    // Section 1: Time Commitments - Deck Creation
+    {
+      type: 'question',
+      section: 'Time Commitments',
+      content: (
+        <div className="space-y-6">
+          <div className="border-l-4 border-cyan-500 pl-4">
+            <h2 className="text-2xl font-bold text-gray-800">Section 1: Time Commitments</h2>
+            <p className="text-gray-600 mt-1">Understanding your current time allocation</p>
+          </div>
+          
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <label className="block text-lg font-semibold text-gray-800 mb-4">
+              On average, how many hours does it take you to build a 6-slide client presentation deck from scratch?
+              <span className="text-red-500">*</span>
+            </label>
+            <p className="text-sm text-gray-600 mb-4">Include time for research, structuring, content creation, and formatting</p>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
+              placeholder="Enter hours (e.g., 3.5)"
+              value={responses.deckTime || ''}
+              onChange={(e) => updateResponse('deckTime', e.target.value)}
+            />
+          </div>
 
-            return {
-                avgDeckTime: getAvg('deckTime'),
-                avgDataTime: getAvg('dataTime'),
-                avgProposalTime: getAvg('proposalTime'),
-                avgAdminTime: getAvg('adminTime'),
-                avgAIConfidence: getAvg('aiConfidence')
-            };
-        }
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <label className="block text-lg font-semibold text-gray-800 mb-4">
+              How many hours per week do you typically spend on report writing?
+              <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
+              placeholder="Enter hours per week"
+              value={responses.reportTime || ''}
+              onChange={(e) => updateResponse('reportTime', e.target.value)}
+            />
+          </div>
+        </div>
+      )
+    },
 
-        // Render functions
-        function renderResultsDashboard() {
-            const stats = calculateStats();
-            
-            return `
-                <div class="max-w-6xl mx-auto p-4">
-                    <div class="mb-6 flex items-center justify-between flex-wrap gap-4">
-                        <div class="flex items-center space-x-3">
-                            <div class="bg-gradient-to-r from-cyan-500 to-blue-500 p-3 rounded-lg">
-                                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                                </svg>
-                            </div>
-                            <div>
-                                <h1 class="text-2xl font-bold text-gray-800">Survey Results Dashboard</h1>
-                                <p class="text-sm text-gray-600">Alchemmy AI Pilot - Baseline Data</p>
-                            </div>
-                        </div>
-                        <div class="flex gap-3">
-                            <button onclick="exportToCSV()" class="flex items-center space-x-2 px-4 py-2 bg-white border-2 border-cyan-500 text-cyan-600 rounded-lg hover:bg-cyan-50 font-semibold">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                                </svg>
-                                <span>Export CSV</span>
-                            </button>
-                            <button onclick="state.viewMode = 'survey'; render();" class="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-lg hover:shadow-lg font-semibold">
-                                Back to Survey
-                            </button>
-                        </div>
+    // Section 1 continued: More Time Questions
+    {
+      type: 'question',
+      section: 'Time Commitments',
+      content: (
+        <div className="space-y-6">
+          <div className="border-l-4 border-cyan-500 pl-4">
+            <h2 className="text-2xl font-bold text-gray-800">Section 1: Time Commitments (continued)</h2>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <label className="block text-lg font-semibold text-gray-800 mb-4">
+              On average, how many hours does it take you to prepare a proposal or bid response?
+              <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
+              placeholder="Enter hours"
+              value={responses.proposalTime || ''}
+              onChange={(e) => updateResponse('proposalTime', e.target.value)}
+            />
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <label className="block text-lg font-semibold text-gray-800 mb-4">
+              How many hours per week do you spend on data preparation and spreadsheet analysis?
+              <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
+              placeholder="Enter hours per week"
+              value={responses.dataTime || ''}
+              onChange={(e) => updateResponse('dataTime', e.target.value)}
+            />
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <label className="block text-lg font-semibold text-gray-800 mb-4">
+              What percentage of your typical week is spent on strategic vs. repetitive work?
+              <span className="text-red-500">*</span>
+            </label>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm text-gray-600 mb-2 block">Strategic work (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
+                  placeholder="0-100"
+                  value={responses.strategicPercent || ''}
+                  onChange={(e) => updateResponse('strategicPercent', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 mb-2 block">Repetitive work (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
+                  placeholder="0-100"
+                  value={responses.repetitivePercent || ''}
+                  onChange={(e) => updateResponse('repetitivePercent', e.target.value)}
+                />
+              </div>
+            </div>
+            <p className="text-sm text-gray-500 mt-2">Should total 100%</p>
+          </div>
+        </div>
+      )
+    },
+
+    // Section 2: Workflow Analysis
+    {
+      type: 'question',
+      section: 'Workflow Analysis',
+      content: (
+        <div className="space-y-6">
+          <div className="border-l-4 border-cyan-500 pl-4">
+            <h2 className="text-2xl font-bold text-gray-800">Section 2: Workflow Analysis</h2>
+            <p className="text-gray-600 mt-1">Understanding how you work today</p>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <label className="block text-lg font-semibold text-gray-800 mb-4">
+              Please describe your biggest workflow tasks by time taken in a typical week
+              <span className="text-red-500">*</span>
+            </label>
+            <p className="text-sm text-gray-600 mb-4">List the 3-5 activities that consume most of your time and approximately how many hours each takes</p>
+            <textarea
+              rows="6"
+              className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
+              placeholder="Example:&#10;• Client presentations: 8-10 hours&#10;• Email and admin: 5-6 hours&#10;• Research and analysis: 6-8 hours"
+              value={responses.workflowTasks || ''}
+              onChange={(e) => updateResponse('workflowTasks', e.target.value)}
+            />
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <label className="block text-lg font-semibold text-gray-800 mb-4">
+              How would you rate the effectiveness of your current tools and workflows?
+              <span className="text-red-500">*</span>
+            </label>
+            <div className="space-y-3">
+              {['Very ineffective', 'Somewhat ineffective', 'Neutral', 'Somewhat effective', 'Very effective'].map((option, idx) => (
+                <label key={idx} className="flex items-center space-x-3 p-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="toolEffectiveness"
+                    value={option}
+                    checked={responses.toolEffectiveness === option}
+                    onChange={(e) => updateResponse('toolEffectiveness', e.target.value)}
+                    className="w-4 h-4 text-cyan-500"
+                  />
+                  <span className="text-gray-700">{option}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      )
+    },
+
+    // Section 2 continued: Quality Metrics
+    {
+      type: 'question',
+      section: 'Workflow Analysis',
+      content: (
+        <div className="space-y-6">
+          <div className="border-l-4 border-cyan-500 pl-4">
+            <h2 className="text-2xl font-bold text-gray-800">Section 2: Workflow Analysis (continued)</h2>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <label className="block text-lg font-semibold text-gray-800 mb-4">
+              When you create client-facing materials, what percentage typically requires significant revisions before being client-ready?
+              <span className="text-red-500">*</span>
+            </label>
+            <p className="text-sm text-gray-600 mb-4">This helps us establish a quality baseline</p>
+            <select
+              className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
+              value={responses.revisionPercent || ''}
+              onChange={(e) => updateResponse('revisionPercent', e.target.value)}
+            >
+              <option value="">Select percentage range</option>
+              <option value="0-10%">0-10% - Almost always client-ready on first pass</option>
+              <option value="11-30%">11-30% - Usually client-ready with minor tweaks</option>
+              <option value="31-50%">31-50% - About half need substantial revision</option>
+              <option value="51-70%">51-70% - Most need substantial revision</option>
+              <option value="71-100%">71-100% - Nearly all require significant rework</option>
+            </select>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <label className="block text-lg font-semibold text-gray-800 mb-4">
+              How many hours per week do you spend on low-value administrative tasks?
+              <span className="text-red-500">*</span>
+            </label>
+            <p className="text-sm text-gray-600 mb-4">Examples: minute-taking, formatting documents, copying data between systems, scheduling</p>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
+              placeholder="Enter hours per week"
+              value={responses.adminTime || ''}
+              onChange={(e) => updateResponse('adminTime', e.target.value)}
+            />
+          </div>
+        </div>
+      )
+    },
+
+    // Section 3: Productivity Challenges
+    {
+      type: 'question',
+      section: 'Productivity Challenges',
+      content: (
+        <div className="space-y-6">
+          <div className="border-l-4 border-cyan-500 pl-4">
+            <h2 className="text-2xl font-bold text-gray-800">Section 3: Productivity Challenges</h2>
+            <p className="text-gray-600 mt-1">Identifying opportunities for improvement</p>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <label className="block text-lg font-semibold text-gray-800 mb-4">
+              What are your biggest obstacles to productivity?
+              <span className="text-red-500">*</span>
+            </label>
+            <p className="text-sm text-gray-600 mb-4">Please be specific about the challenges you face in your day-to-day work</p>
+            <textarea
+              rows="5"
+              className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
+              placeholder="Example: Spending too much time on formatting slides, difficulty finding past project materials, repetitive data entry tasks..."
+              value={responses.obstacles || ''}
+              onChange={(e) => updateResponse('obstacles', e.target.value)}
+            />
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <label className="block text-lg font-semibold text-gray-800 mb-4">
+              Which tasks would you most like to streamline or automate?
+              <span className="text-red-500">*</span>
+            </label>
+            <p className="text-sm text-gray-600 mb-4">Think about repetitive, time-consuming activities where AI assistance could add value</p>
+            <textarea
+              rows="5"
+              className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
+              placeholder="Example: Creating first drafts of proposals, summarising meeting notes, generating slide content from research..."
+              value={responses.streamlineTasks || ''}
+              onChange={(e) => updateResponse('streamlineTasks', e.target.value)}
+            />
+          </div>
+        </div>
+      )
+    },
+
+    // Section 3 continued: Final Questions
+    {
+      type: 'question',
+      section: 'Productivity Challenges',
+      content: (
+        <div className="space-y-6">
+          <div className="border-l-4 border-cyan-500 pl-4">
+            <h2 className="text-2xl font-bold text-gray-800">Section 3: Productivity Challenges (continued)</h2>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <label className="block text-lg font-semibold text-gray-800 mb-4">
+              In which areas do you feel most overwhelmed or under time pressure?
+              <span className="text-red-500">*</span>
+            </label>
+            <div className="space-y-3">
+              {[
+                'Client presentations and decks',
+                'Report writing',
+                'Data analysis and spreadsheets',
+                'Proposal and bid writing',
+                'Research and information gathering',
+                'Meeting preparation and follow-up',
+                'Administrative tasks'
+              ].map((area, idx) => (
+                <label key={idx} className="flex items-center space-x-3 p-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={responses.overwhelmedAreas?.includes(area) || false}
+                    onChange={(e) => {
+                      const current = responses.overwhelmedAreas || [];
+                      if (e.target.checked) {
+                        updateResponse('overwhelmedAreas', [...current, area]);
+                      } else {
+                        updateResponse('overwhelmedAreas', current.filter(a => a !== area));
+                      }
+                    }}
+                    className="w-4 h-4 text-cyan-500 rounded"
+                  />
+                  <span className="text-gray-700">{area}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <label className="block text-lg font-semibold text-gray-800 mb-4">
+              On a scale of 1-5, how confident are you in your current AI literacy?
+              <span className="text-red-500">*</span>
+            </label>
+            <p className="text-sm text-gray-600 mb-4">1 = Never used AI tools, 5 = Regularly use AI tools and feel very confident</p>
+            <div className="flex justify-between gap-2">
+              {[1, 2, 3, 4, 5].map((num) => (
+                <button
+                  key={num}
+                  onClick={() => updateResponse('aiConfidence', num)}
+                  className={`flex-1 p-4 border-2 rounded-lg font-semibold transition-all ${
+                    responses.aiConfidence === num
+                      ? 'bg-cyan-500 text-white border-cyan-500'
+                      : 'bg-white text-gray-700 border-gray-300 hover:border-cyan-300'
+                  }`}
+                >
+                  {num}
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-between text-xs text-gray-500 mt-2">
+              <span>No experience</span>
+              <span>Very confident</span>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <label className="block text-lg font-semibold text-gray-800 mb-4">
+              Any additional comments or expectations for the AI pilot?
+            </label>
+            <textarea
+              rows="4"
+              className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
+              placeholder="Optional: Share any thoughts, concerns, or hopes for the pilot programme..."
+              value={responses.additionalComments || ''}
+              onChange={(e) => updateResponse('additionalComments', e.target.value)}
+            />
+          </div>
+        </div>
+      )
+    },
+
+    // Closing Page
+    {
+      type: 'closing',
+      content: (
+        <div className="space-y-6">
+          {!submitted ? (
+            <>
+              <div className="bg-gradient-to-r from-cyan-500 to-blue-500 p-8 rounded-lg text-white text-center">
+                <h1 className="text-4xl font-bold mb-2">Ready to Submit?</h1>
+                <p className="text-xl opacity-90">Please review your responses before submitting</p>
+              </div>
+              
+              <div className="bg-white p-6 rounded-lg shadow-sm">
+                <h2 className="text-2xl font-semibold text-gray-800 mb-4">Submit Your Survey</h2>
+                <p className="text-gray-700 mb-6">
+                  By clicking submit, your responses will be saved securely and used to establish baseline metrics for the AI pilot programme.
+                </p>
+                <button
+                  onClick={saveResponse}
+                  disabled={loading}
+                  className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 text-white py-4 px-6 rounded-lg font-semibold text-lg hover:shadow-lg transition-all disabled:opacity-50"
+                >
+                  {loading ? 'Submitting...' : 'Submit Survey'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="bg-gradient-to-r from-cyan-500 to-blue-500 p-8 rounded-lg text-white text-center">
+                <h1 className="text-4xl font-bold mb-2">Thank You!</h1>
+                <p className="text-xl opacity-90">Your responses have been recorded</p>
+              </div>
+              
+              <div className="bg-white p-6 rounded-lg shadow-sm">
+                <h2 className="text-2xl font-semibold text-gray-800 mb-4">What Happens Next?</h2>
+                <div className="space-y-4">
+                  <div className="flex items-start space-x-3">
+                    <div className="bg-cyan-500 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0 font-bold">1</div>
+                    <div>
+                      <h3 className="font-semibold text-gray-800">Pilot Launch</h3>
+                      <p className="text-gray-600 text-sm">You'll receive your LLM tool access (ChatGPT, TeamGPT, or Claude) along with training on best practices and use cases.</p>
                     </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                        <div class="bg-white p-6 rounded-lg shadow-sm border-l-4 border-cyan-500">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-sm text-gray-600 mb-1">Total Responses</p>
-                                    <p class="text-3xl font-bold text-gray-800">${state.allResponses.length}</p>
-                                </div>
-                                <svg class="w-12 h-12 text-cyan-500 opacity-20" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/>
-                                </svg>
-                            </div>
-                        </div>
-                        
-                        ${stats ? `
-                            <div class="bg-white p-6 rounded-lg shadow-sm border-l-4 border-blue-500">
-                                <p class="text-sm text-gray-600 mb-1">Avg Deck Creation Time</p>
-                                <p class="text-3xl font-bold text-gray-800">${stats.avgDeckTime} hrs</p>
-                                <p class="text-xs text-gray-500 mt-1">Target: 30% reduction</p>
-                            </div>
-                            
-                            <div class="bg-white p-6 rounded-lg shadow-sm border-l-4 border-purple-500">
-                                <p class="text-sm text-gray-600 mb-1">Avg AI Confidence</p>
-                                <p class="text-3xl font-bold text-gray-800">${stats.avgAIConfidence} / 5</p>
-                                <p class="text-xs text-gray-500 mt-1">Current baseline</p>
-                            </div>
-                        ` : ''}
+                  </div>
+                  <div className="flex items-start space-x-3">
+                    <div className="bg-cyan-500 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0 font-bold">2</div>
+                    <div>
+                      <h3 className="font-semibold text-gray-800">6-Month Trial Period</h3>
+                      <p className="text-gray-600 text-sm">Use the AI tools in your daily work. We'll check in regularly to share best practices and gather feedback.</p>
                     </div>
-
-                    ${stats ? `
-                        <div class="bg-white p-6 rounded-lg shadow-sm mb-6">
-                            <h2 class="text-xl font-semibold text-gray-800 mb-4">Key Time Metrics (Baseline)</h2>
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <div>
-                                    <p class="text-sm text-gray-600">Data Prep Time</p>
-                                    <p class="text-2xl font-bold text-cyan-600">${stats.avgDataTime} hrs/wk</p>
-                                    <p class="text-xs text-gray-500">Target: -40%</p>
-                                </div>
-                                <div>
-                                    <p class="text-sm text-gray-600">Proposal Time</p>
-                                    <p class="text-2xl font-bold text-blue-600">${stats.avgProposalTime} hrs</p>
-                                    <p class="text-xs text-gray-500">Target: -25%</p>
-                                </div>
-                                <div>
-                                    <p class="text-sm text-gray-600">Admin Time</p>
-                                    <p class="text-2xl font-bold text-purple-600">${stats.avgAdminTime} hrs/wk</p>
-                                    <p class="text-xs text-gray-500">Target: -20%</p>
-                                </div>
-                                <div>
-                                    <p class="text-sm text-gray-600">Total Responses</p>
-                                    <p class="text-2xl font-bold text-green-600">${state.allResponses.length}</p>
-                                    <p class="text-xs text-gray-500">Participants</p>
-                                </div>
-                            </div>
-                        </div>
-                    ` : ''}
-
-                    <div class="bg-white p-6 rounded-lg shadow-sm">
-                        <h2 class="text-xl font-semibold text-gray-800 mb-4">Individual Responses</h2>
-                        ${state.loading ? `
-                            <p class="text-center py-8 text-gray-600">Loading responses...</p>
-                        ` : state.allResponses.length === 0 ? `
-                            <p class="text-center py-8 text-gray-600">No responses yet</p>
-                        ` : `
-                            <div class="space-y-4 max-h-96 overflow-y-auto">
-                                ${state.allResponses.map((response, idx) => `
-                                    <div class="border-2 border-gray-200 rounded-lg p-4 hover:border-cyan-300 transition-colors">
-                                        <div class="flex justify-between items-start mb-2">
-                                            <h3 class="font-semibold text-gray-800">${response.name}</h3>
-                                            <span class="text-xs text-gray-500">
-                                                ${new Date(response.timestamp).toLocaleDateString()} ${new Date(response.timestamp).toLocaleTimeString()}
-                                            </span>
-                                        </div>
-                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-                                            <div>
-                                                <span class="text-gray-600">Deck: </span>
-                                                <span class="font-semibold">${response.responses.deckTime || 'N/A'} hrs</span>
-                                            </div>
-                                            <div>
-                                                <span class="text-gray-600">Data: </span>
-                                                <span class="font-semibold">${response.responses.dataTime || 'N/A'} hrs/wk</span>
-                                            </div>
-                                            <div>
-                                                <span class="text-gray-600">AI Confidence: </span>
-                                                <span class="font-semibold">${response.responses.aiConfidence || 'N/A'}/5</span>
-                                            </div>
-                                            <div>
-                                                <span class="text-gray-600">Admin: </span>
-                                                <span class="font-semibold">${response.responses.adminTime || 'N/A'} hrs/wk</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        `}
+                  </div>
+                  <div className="flex items-start space-x-3">
+                    <div className="bg-cyan-500 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0 font-bold">3</div>
+                    <div>
+                      <h3 className="font-semibold text-gray-800">Follow-Up Survey</h3>
+                      <p className="text-gray-600 text-sm">At the end of the pilot, you'll complete a similar survey so we can measure productivity gains and quality improvements.</p>
                     </div>
+                  </div>
+                  <div className="flex items-start space-x-3">
+                    <div className="bg-cyan-500 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0 font-bold">4</div>
+                    <div>
+                      <h3 className="font-semibold text-gray-800">Results & Rollout</h3>
+                      <p className="text-gray-600 text-sm">We'll present findings to the Board and decide on wider rollout based on measurable productivity and quality gains.</p>
+                    </div>
+                  </div>
                 </div>
-            `;
-        }
+              </div>
 
-        function renderSurvey() {
-            const pages = getSurveyPages();
-            const progress = ((state.currentPage + 1) / pages.length) * 100;
-            
-            return `
-                <div class="max-w-4xl mx-auto p-4">
-                    <div class="mb-6 flex items-center justify-between flex-wrap gap-4">
-                        <div class="flex items-center space-x-3">
-                            <div class="bg-gradient-to-r from-cyan-500 to-blue-500 p-3 rounded-lg">
-                                <span class="text-white font-bold text-2xl">A</span>
-                            </div>
-                            <div>
-                                <h1 class="text-xl font-bold text-gray-800">Alchemmy</h1>
-                                <p class="text-sm text-gray-600">AI Pilot Survey</p>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-3">
-                            <button onclick="state.viewMode = 'results'; loadAllResponses();" class="flex items-center space-x-2 px-4 py-2 bg-white border-2 border-cyan-500 text-cyan-600 rounded-lg hover:bg-cyan-50 font-semibold text-sm">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                                </svg>
-                                <span>View Results</span>
-                            </button>
-                            <div class="text-right text-sm text-gray-600">
-                                <div class="font-semibold">October 2025</div>
-                                <div class="text-xs">UK's Leading Management Consultants</div>
-                            </div>
-                        </div>
-                    </div>
+              <div className="bg-cyan-50 border-l-4 border-cyan-500 p-6 rounded-lg">
+                <h3 className="font-semibold text-cyan-900 mb-2">Success Targets</h3>
+                <p className="text-gray-700 text-sm mb-3">By the end of the pilot, we're aiming to achieve:</p>
+                <ul className="space-y-1 text-sm text-gray-700">
+                  <li>• ≥30% reduction in slide creation time</li>
+                  <li>• ≥40% reduction in data preparation time</li>
+                  <li>• ≥25% reduction in proposal drafting time</li>
+                  <li>• 70%+ of AI-assisted drafts client-ready on first pass</li>
+                </ul>
+              </div>
 
-                    <div class="mb-6 bg-white rounded-full h-3 shadow-inner overflow-hidden">
-                        <div class="bg-gradient-to-r from-cyan-500 to-blue-500 h-full transition-all duration-500 ease-out rounded-full" style="width: ${progress}%"></div>
-                    </div>
-                    <div class="text-center text-sm text-gray-600 mb-6">
-                        Page ${state.currentPage + 1} of ${pages.length}
-                    </div>
+              <div className="text-center">
+                <p className="text-gray-600 mb-2">Questions about the pilot?</p>
+                <p className="text-gray-800 font-semibold">Contact: Adam Kearns (Delivery Lead)</p>
+              </div>
+            </>
+          )}
+        </div>
+      )
+    }
+  ];
 
-                    <div class="bg-white rounded-xl shadow-lg p-8 mb-6 min-h-[500px] animate-in">
-                        ${pages[state.currentPage]}
-                    </div>
+  // Results Dashboard
+  if (viewMode === 'results') {
+    const stats = calculateStats();
+    
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-4">
+        <div className="max-w-6xl mx-auto">
+          {/* Header */}
+          <div className="mb-6 flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="bg-gradient-to-r from-cyan-500 to-blue-500 p-3 rounded-lg">
+                <BarChart3 className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-800">Survey Results Dashboard</h1>
+                <p className="text-sm text-gray-600">Alchemmy AI Pilot - Baseline Data</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={exportToCSV}
+                className="flex items-center space-x-2 px-4 py-2 bg-white border-2 border-cyan-500 text-cyan-600 rounded-lg hover:bg-cyan-50 font-semibold"
+              >
+                <Download className="w-4 h-4" />
+                <span>Export CSV</span>
+              </button>
+              <button
+                onClick={() => setViewMode('survey')}
+                className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-lg hover:shadow-lg font-semibold"
+              >
+                Back to Survey
+              </button>
+            </div>
+          </div>
 
-                    <div class="flex justify-between items-center">
-                        <button 
-                            onclick="state.currentPage = Math.max(0, state.currentPage - 1); render();" 
-                            ${state.currentPage === 0 ? 'disabled' : ''}
-                            class="flex items-center space-x-2 px-6 py-3 rounded-lg font-semibold transition-all ${state.currentPage === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-white text-cyan-600 hover:bg-cyan-50 border-2 border-cyan-500'}"
-                        >
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-                            </svg>
-                            <span>Previous</span>
-                        </button>
-
-                        <button 
-                            onclick="state.currentPage = Math.min(${pages.length - 1}, state.currentPage + 1); render();" 
-                            ${state.currentPage === pages.length - 1 ? 'disabled' : ''}
-                            class="flex items-center space-x-2 px-6 py-3 rounded-lg font-semibold transition-all ${state.currentPage === pages.length - 1 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white hover:shadow-lg'}"
-                        >
-                            <span>Next</span>
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                            </svg>
-                        </button>
-                    </div>
-
-                    <div class="mt-8 text-center text-sm text-gray-600">
-                        <p>Riverside House, 2A Southwark Bridge Road, London, SE1 9HA</p>
-                        <p class="mt-1">www.alchemmy.com</p>
-                    </div>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-white p-6 rounded-lg shadow-sm border-l-4 border-cyan-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">Total Responses</p>
+                  <p className="text-3xl font-bold text-gray-800">{allResponses.length}</p>
                 </div>
-            `;
-        }
+                <Users className="w-12 h-12 text-cyan-500 opacity-20" />
+              </div>
+            </div>
+            
+            {stats && (
+              <>
+                <div className="bg-white p-6 rounded-lg shadow-sm border-l-4 border-blue-500">
+                  <p className="text-sm text-gray-600 mb-1">Avg Deck Creation Time</p>
+                  <p className="text-3xl font-bold text-gray-800">{stats.avgDeckTime} hrs</p>
+                  <p className="text-xs text-gray-500 mt-1">Target: 30% reduction</p>
+                </div>
+                
+                <div className="bg-white p-6 rounded-lg shadow-sm border-l-4 border-purple-500">
+                  <p className="text-sm text-gray-600 mb-1">Avg AI Confidence</p>
+                  <p className="text-3xl font-bold text-gray-800">{stats.avgAIConfidence} / 5</p>
+                  <p className="text-xs text-gray-500 mt-1">Current baseline</p>
+                </div>
+              </>
+            )}
+          </div>
 
-        function getSurveyPages() {
-            return [
-                // Page 0: Introduction
-                `<div class="space-y-6">
-                    <div class="bg-gradient-to-r from-cyan-500 to-blue-500 p-8 rounded-lg text-white">
-                        <h1 class="text-4xl font-bold mb-2">Alchemmy AI Pilot</h1>
-                        <p class="text-xl opacity-90">Baseline Productivity Survey</p>
+          {/* Key Metrics */}
+          {stats && (
+            <div className="bg-white p-6 rounded-lg shadow-sm mb-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">Key Time Metrics (Baseline)</h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-sm text-gray-600">Data Prep Time</p>
+                  <p className="text-2xl font-bold text-cyan-600">{stats.avgDataTime} hrs/wk</p>
+                  <p className="text-xs text-gray-500">Target: -40%</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Proposal Time</p>
+                  <p className="text-2xl font-bold text-blue-600">{stats.avgProposalTime} hrs</p>
+                  <p className="text-xs text-gray-500">Target: -25%</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Admin Time</p>
+                  <p className="text-2xl font-bold text-purple-600">{stats.avgAdminTime} hrs/wk</p>
+                  <p className="text-xs text-gray-500">Target: -20%</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Total Responses</p>
+                  <p className="text-2xl font-bold text-green-600">{allResponses.length}</p>
+                  <p className="text-xs text-gray-500">Participants</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Individual Responses */}
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Individual Responses</h2>
+            {loading ? (
+              <p className="text-center py-8 text-gray-600">Loading responses...</p>
+            ) : allResponses.length === 0 ? (
+              <p className="text-center py-8 text-gray-600">No responses yet</p>
+            ) : (
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {allResponses.map((response, idx) => (
+                  <div key={idx} className="border-2 border-gray-200 rounded-lg p-4 hover:border-cyan-300 transition-colors">
+                    <div className="flex justify-between items-start mb-2">
+                      <h3 className="font-semibold text-gray-800">{response.name}</h3>
+                      <span className="text-xs text-gray-500">
+                        {new Date(response.timestamp).toLocaleDateString()} {new Date(response.timestamp).toLocaleTimeString()}
+                      </span>
                     </div>
-                    
-                    <div class="bg-white p-6 rounded-lg shadow-sm border-l-4 border-cyan-500">
-                        <h2 class="text-2xl font-semibold text-gray-800 mb-4">Welcome to the AI Pilot Programme</h2>
-                        <p class="text-gray-700 mb-4">
-                            Alchemmy is embarking on a 6-month AI pilot to maximise efficiency, boost productivity, and future-proof our workforce for the AI era. This pilot will test enterprise LLM solutions (ChatGPT, TeamGPT, and Claude) to determine their impact on our consulting workflows.
-                        </p>
-                        <div class="bg-cyan-50 p-4 rounded-md mb-4">
-                            <h3 class="font-semibold text-cyan-900 mb-2">Our Strategic Objectives:</h3>
-                            <ul class="space-y-2 text-gray-700">
-                                <li class="flex items-start">
-                                    <span class="text-cyan-500 mr-2">•</span>
-                                    <span><strong>Automate Repetitive Workflows:</strong> Achieve a 20% reduction in time spent on low-value tasks</span>
-                                </li>
-                                <li class="flex items-start">
-                                    <span class="text-cyan-500 mr-2">•</span>
-                                    <span><strong>Foster AI Competence:</strong> Ensure all staff become AI literate through hands-on experience</span>
-                                </li>
-                                <li class="flex items-start">
-                                    <span class="text-cyan-500 mr-2">•</span>
-                                    <span><strong>Establish IP-Informed Workflows:</strong> Leverage company knowledge to enhance LLM outputs</span>
-                                </li>
-                            </ul>
-                        </div>
-                        <p class="text-gray-700 mb-4">
-                            <strong>Purpose of this survey:</strong> To capture baseline productivity metrics before the pilot begins. Your responses will be compared with follow-up data collected at the pilot's conclusion to measure impact and inform our business case for wider rollout.
-                        </p>
-                        <p class="text-sm text-gray-600 italic">
-                            Estimated completion time: 8-10 minutes
-                        </p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                      <div>
+                        <span className="text-gray-600">Deck: </span>
+                        <span className="font-semibold">{response.responses.deckTime || 'N/A'} hrs</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Data: </span>
+                        <span className="font-semibold">{response.responses.dataTime || 'N/A'} hrs/wk</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">AI Confidence: </span>
+                        <span className="font-semibold">{response.responses.aiConfidence || 'N/A'}/5</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Admin: </span>
+                        <span className="font-semibold">{response.responses.adminTime || 'N/A'} hrs/wk</span>
+                      </div>
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-                    <div class="bg-white p-6 rounded-lg shadow-sm">
-                        <label class="block text-lg font-semibold text-gray-800 mb-4">
-                            Please enter your name to begin:
-                            <span class="text-red-500">*</span>
-                        </label>
-                        <input
-                            type="text"
-                            id="userName"
-                            class="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
-                            placeholder="Your full name"
-                            value="${state.userName}"
-                            oninput="state.userName = this.value; render();"
-                        />
-                    </div>
-                </div>`,
+  const progress = ((currentPage + 1) / pages.length) * 100;
 
-                // Page 1: Time Commitments
-                `<div class="space-y-6">
-                    <div class="border-l-4 border-cyan-500 pl-4">
-                        <h2 class="text-2xl font-bold text-gray-800">Section 1: Time Commitments</h2>
-                        <p class="text-gray-600 mt-1">Understanding your current time allocation</p>
-                    </div>
-                    
-                    <div class="bg-white p-6 rounded-lg shadow-sm">
-                        <label class="block text-lg font-semibold text-gray-800 mb-4">
-                            On average, how many hours does it take you to build a 6-slide client presentation deck from scratch?
-                            <span class="text-red-500">*</span>
-                        </label>
-                        <p class="text-sm text-gray-600 mb-4">Include time for research, structuring, content creation, and formatting</p>
-                        <input
-                            type="number"
-                            step="0.5"
-                            min="0"
-                            class="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
-                            placeholder="Enter hours (e.g., 3.5)"
-                            value="${state.responses.deckTime || ''}"
-                            oninput="state.responses.deckTime = this.value;"
-                        />
-                    </div>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-4">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="bg-gradient-to-r from-cyan-500 to-blue-500 p-3 rounded-lg">
+              <span className="text-white font-bold text-2xl">A</span>
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-800">Alchemmy</h1>
+              <p className="text-sm text-gray-600">AI Pilot Survey</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setViewMode('results');
+                loadAllResponses();
+              }}
+              className="flex items-center space-x-2 px-4 py-2 bg-white border-2 border-cyan-500 text-cyan-600 rounded-lg hover:bg-cyan-50 font-semibold text-sm"
+            >
+              <BarChart3 className="w-4 h-4" />
+              <span>View Results</span>
+            </button>
+            <div className="text-right text-sm text-gray-600">
+              <div className="font-semibold">October 2025</div>
+              <div className="text-xs">UK's Leading Management Consultants</div>
+            </div>
+          </div>
+        </div>
 
-                    <div class="bg-white p-6 rounded-lg shadow-sm">
-                        <label class="block text-lg font-semibold text-gray-800 mb-4">
-                            How many hours per week do you typically spend on report writing?
-                            <span class="text-red-500">*</span>
-                        </label>
-                        <input
-                            type="number"
-                            step="0.5"
-                            min="0"
-                            class="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
-                            placeholder="Enter hours per week"
-                            value="${state.responses.reportTime || ''}"
-                            oninput="state.responses.reportTime = this.value;"
-                        />
-                    </div>
-                </div>`,
+        {/* Progress Bar */}
+        <div className="mb-6 bg-white rounded-full h-3 shadow-inner overflow-hidden">
+          <div 
+            className="bg-gradient-to-r from-cyan-500 to-blue-500 h-full transition-all duration-500 ease-out rounded-full"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <div className="text-center text-sm text-gray-600 mb-6">
+          Page {currentPage + 1} of {pages.length}
+        </div>
 
-                // Page 2: More Time Questions
-                `<div class="space-y-6">
-                    <div class="border-l-4 border-cyan-500 pl-4">
-                        <h2 class="text-2xl font-bold text-gray-800">Section 1: Time Commitments (continued)</h2>
-                    </div>
+        {/* Content */}
+        <div className="bg-white rounded-xl shadow-lg p-8 mb-6 min-h-[500px]">
+          {pages[currentPage].content}
+        </div>
 
-                    <div class="bg-white p-6 rounded-lg shadow-sm">
-                        <label class="block text-lg font-semibold text-gray-800 mb-4">
-                            On average, how many hours does it take you to prepare a proposal or bid response?
-                            <span class="text-red-500">*</span>
-                        </label>
-                        <input
-                            type="number"
-                            step="0.5"
-                            min="0"
-                            class="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
-                            placeholder="Enter hours"
-                            value="${state.responses.proposalTime || ''}"
-                            oninput="state.responses.proposalTime = this.value;"
-                        />
-                    </div>
+        {/* Navigation */}
+        <div className="flex justify-between items-center">
+          <button
+            onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+            disabled={currentPage === 0}
+            className={`flex items-center space-x-2 px-6 py-3 rounded-lg font-semibold transition-all ${
+              currentPage === 0
+                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                : 'bg-white text-cyan-600 hover:bg-cyan-50 border-2 border-cyan-500'
+            }`}
+          >
+            <ChevronLeft className="w-5 h-5" />
+            <span>Previous</span>
+          </button>
 
-                    <div class="bg-white p-6 rounded-lg shadow-sm">
-                        <label class="block text-lg font-semibold text-gray-800 mb-4">
-                            How many hours per week do you spend on data preparation and spreadsheet analysis?
-                            <span class="text-red-500">*</span>
-                        </label>
-                        <input
-                            type="number"
-                            step="0.5"
-                            min="0"
-                            class="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
-                            placeholder="Enter hours per week"
-                            value="${state.responses.dataTime || ''}"
-                            oninput="state.responses.dataTime = this.value;"
-                        />
-                    </div>
+          <button
+            onClick={() => setCurrentPage(Math.min(pages.length - 1, currentPage + 1))}
+            disabled={currentPage === pages.length - 1}
+            className={`flex items-center space-x-2 px-6 py-3 rounded-lg font-semibold transition-all ${
+              currentPage === pages.length - 1
+                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white hover:shadow-lg'
+            }`}
+          >
+            <span>Next</span>
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
 
-                    <div class="bg-white p-6 rounded-lg shadow-sm">
-                        <label class="block text-lg font-semibold text-gray-800 mb-4">
-                            What percentage of your typical week is spent on strategic vs. repetitive work?
-                            <span class="text-red-500">*</span>
-                        </label>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="text-sm text-gray-600 mb-2 block">Strategic work (%)</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    max="100"
-                                    class="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
-                                    placeholder="0-100"
-                                    value="${state.responses.strategicPercent || ''}"
-                                    oninput="state.responses.strategicPercent = this.value;"
-                                />
-                            </div>
-                            <div>
-                                <label class="text-sm text-gray-600 mb-2 block">Repetitive work (%)</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    max="100"
-                                    class="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
-                                    placeholder="0-100"
-                                    value="${state.responses.repetitivePercent || ''}"
-                                    oninput="state.responses.repetitivePercent = this.value;"
-                                />
-                            </div>
-                        </div>
-                        <p class="text-sm text-gray-500 mt-2">Should total 100%</p>
-                    </div>
-                </div>`,
+        {/* Footer */}
+        <div className="mt-8 text-center text-sm text-gray-600">
+          <p>Riverside House, 2A Southwark Bridge Road, London, SE1 9HA</p>
+          <p className="mt-1">www.alchemmy.com</p>
+        </div>
+      </div>
+    </div>
+  );
+};
 
-                // Page 3: Workflow Analysis
-                `<div class="space-y-6">
-                    <div class="border-l-4 border-cyan-500 pl-4">
-                        <h2 class="text-2xl font-bold text-gray-800">Section 2: Workflow Analysis</h2>
-                        <p class="text-gray-600 mt-1">Understanding how you work today</p>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-lg shadow-sm">
-                        <label class="block text-lg font-semibold text-gray-800 mb-4">
-                            Please describe your biggest workflow tasks by time taken in a typical week
-                            <span class="text-red-500">*</span>
-                        </label>
-                        <p class="text-sm text-gray-600 mb-4">List the 3-5 activities that consume most of your time and approximately how many hours each takes</p>
-                        <textarea
-                            rows="6"
-                            class="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
-                            placeholder="Example:
-- Client presentations: 8-10 hours
-- Email and admin: 5-6 hours
-- Research and analysis: 6-8 hours"
-                            oninput="state.responses.workflowTasks = this.value;"
-                        >${state.responses.workflowTasks || ''}</textarea>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-lg shadow-sm">
-                        <label class="block text-lg font-semibold text-gray-800 mb-4">
-                            How would you rate the effectiveness of your current tools and workflows?
-                            <span class="text-red-500">*</span>
-                        </label>
-                        <div class="space-y-3">
-                            ${['Very ineffective', 'Somewhat ineffective', 'Neutral', 'Somewhat effective', 'Very effective'].map(option => `
-                                <label class="flex items-center space-x-3 p-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        name="toolEffectiveness"
-                                        value="${option}"
-                                        ${state.responses.toolEffectiveness === option ? 'checked' : ''}
-                                        onchange="state.responses.toolEffectiveness = this.value;"
-                                        class="w-4 h-4 text-cyan-500"
-                                    />
-                                    <span class="text-gray-700">${option}</span>
-                                </label>
-                            `).join('')}
-                        </div>
-                    </div>
-                </div>`,
-
-                // Page 4: Quality Metrics
-                `<div class="space-y-6">
-                    <div class="border-l-4 border-cyan-500 pl-4">
-                        <h2 class="text-2xl font-bold text-gray-800">Section 2: Workflow Analysis (continued)</h2>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-lg shadow-sm">
-                        <label class="block text-lg font-semibold text-gray-800 mb-4">
-                            When you create client-facing materials, what percentage typically requires significant revisions before being client-ready?
-                            <span class="text-red-500">*</span>
-                        </label>
-                        <p class="text-sm text-gray-600 mb-4">This helps us establish a quality baseline</p>
-                        <select
-                            class="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
-                            onchange="state.responses.revisionPercent = this.value;"
-                        >
-                            <option value="">Select percentage range</option>
-                            ${['0-10%', '11-30%', '31-50%', '51-70%', '71-100%'].map(range => `
-                                <option value="${range}" ${state.responses.revisionPercent === range ? 'selected' : ''}>
-                                    ${range} - ${
-                                        range === '0-10%' ? 'Almost always client-ready on first pass' :
-                                        range === '11-30%' ? 'Usually client-ready with minor tweaks' :
-                                        range === '31-50%' ? 'About half need substantial revision' :
-                                        range === '51-70%' ? 'Most need substantial revision' :
-                                        'Nearly all require significant rework'
-                                    }
-                                </option>
-                            `).join('')}
-                        </select>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-lg shadow-sm">
-                        <label class="block text-lg font-semibold text-gray-800 mb-4">
-                            How many hours per week do you spend on low-value administrative tasks?
-                            <span class="text-red-500">*</span>
-                        </label>
-                        <p class="text-sm text-gray-600 mb-4">Examples: minute-taking, formatting documents, copying data between systems, scheduling</p>
-                        <input
-                            type="number"
-                            step="0.5"
-                            min="0"
-                            class="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
-                            placeholder="Enter hours per week"
-                            value="${state.responses.adminTime || ''}"
-                            oninput="state.responses.adminTime = this.value;"
-                        />
-                    </div>
-                </div>`,
-
-                // Page 5: Productivity Challenges
-                `<div class="space-y-6">
-                    <div class="border-l-4 border-cyan-500 pl-4">
-                        <h2 class="text-2xl font-bold text-gray-800">Section 3: Productivity Challenges</h2>
-                        <p class="text-gray-600 mt-1">Identifying opportunities for improvement</p>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-lg shadow-sm">
-                        <label class="block text-lg font-semibold text-gray-800 mb-4">
-                            What are your biggest obstacles to productivity?
-                            <span class="text-red-500">*</span>
-                        </label>
-                        <p class="text-sm text-gray-600 mb-4">Please be specific about the challenges you face in your day-to-day work</p>
-                        <textarea
-                            rows="5"
-                            class="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
-                            placeholder="Example: Spending too much time on formatting slides, difficulty finding past project materials, repetitive data entry tasks..."
-                            oninput="state.responses.obstacles = this.value;"
-                        >${state.responses.obstacles || ''}</textarea>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-lg shadow-sm">
-                        <label class="block text-lg font-semibold text-gray-800 mb-4">
-                            Which tasks would you most like to streamline or automate?
-                            <span class="text-red-500">*</span>
-                        </label>
-                        <p class="text-sm text-gray-600 mb-4">Think about repetitive, time-consuming activities where AI assistance could add value</p>
-                        <textarea
-                            rows="5"
-                            class="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
-                            placeholder="Example: Creating first drafts of proposals, summarising meeting notes, generating slide content from research..."
-                            oninput="state.responses.streamlineTasks = this.value;"
-                        >${state.responses.streamlineTasks || ''}</textarea>
-                    </div>
-                </div>`,
-
-                // Page 6: Final Questions
-                `<div class="space-y-6">
-                    <div class="border-l-4 border-cyan-500 pl-4">
-                        <h2 class="text-2xl font-bold text-gray-800">Section 3: Productivity Challenges (continued)</h2>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-lg shadow-sm">
-                        <label class="block text-lg font-semibold text-gray-800 mb-4">
-                            In which areas do you feel most overwhelmed or under time pressure?
-                            <span class="text-red-500">*</span>
-                        </label>
-                        <div class="space-y-3">
-                            ${[
-                                'Client presentations and decks',
-                                'Report writing',
-                                'Data analysis and spreadsheets',
-                                'Proposal and bid writing',
-                                'Research and information gathering',
-                                'Meeting preparation and follow-up',
-                                'Administrative tasks'
-                            ].map(area => `
-                                <label class="flex items-center space-x-3 p-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        value="${area}"
-                                        ${(state.responses.overwhelmedAreas || []).includes(area) ? 'checked' : ''}
-                                        onchange="
-                                            if (!state.responses.overwhelmedAreas) state.responses.overwhelmedAreas = [];
-                                            if (this.checked) {
-                                                if (!state.responses.overwhelmedAreas.includes('${area}')) {
-                                                    state.responses.overwhelmedAreas.push('${area}');
-                                                }
-                                            } else {
-                                                state.responses.overwhelmedAreas = state.responses.overwhelmedAreas.filter(a => a !== '${area}');
-                                            }
-                                        "
-                                        class="w-4 h-4 text-cyan-500 rounded"
-                                    />
-                                    <span class="text-gray-700">${area}</span>
-                                </label>
-                            `).join('')}
-                        </div>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-lg shadow-sm">
-                        <label class="block text-lg font-semibold text-gray-800 mb-4">
-                            On a scale of 1-5, how confident are you in your current AI literacy?
-                            <span class="text-red-500">*</span>
-                        </label>
-                        <p class="text-sm text-gray-600 mb-4">1 = Never used AI tools, 5 = Regularly use AI tools and feel very confident</p>
-                        <div class="flex justify-between gap-2">
-                            ${[1, 2, 3, 4, 5].map(num => `
-                                <button
-                                    onclick="state.responses.aiConfidence = ${num}; render();"
-                                    class="flex-1 p-4 border-2 rounded-lg font-semibold transition-all ${
-                                        state.responses.aiConfidence === num
-                                            ? 'bg-cyan-500 text-white border-cyan-500'
-                                            : 'bg-white text-gray-700 border-gray-300 hover:border-cyan-300'
-                                    }"
-                                >
-                                    ${num}
-                                </button>
-                            `).join('')}
-                        </div>
-                        <div class="flex justify-between text-xs text-gray-500 mt-2">
-                            <span>No experience</span>
-                            <span>Very confident</span>
-                        </div>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-lg shadow-sm">
-                        <label class="block text-lg font-semibold text-gray-800 mb-4">
-                            Any additional comments or expectations for the AI pilot?
-                        </label>
-                        <textarea
-                            rows="4"
-                            class="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-cyan-500 focus:outline-none"
-                            placeholder="Optional: Share any thoughts, concerns, or hopes for the pilot programme..."
-                            oninput="state.responses.additionalComments = this.value;"
-                        >${state.responses.additionalComments || ''}</textarea>
-                    </div>
-                </div>`,
-
-                // Page 7: Closing
-                `<div class="space-y-6">
-                    ${!state.submitted ? `
-                        <div class="bg-gradient-to-r from-cyan-500 to-blue-500 p-8 rounded-lg text-white text-center">
-                            <h1 class="text-4xl font-bold mb-2">Ready to Submit?</h1>
-                            <p class="text-xl opacity-90">Please review your responses before submitting</p>
-                        </div>
-                        
-                        <div class="bg-white p-6 rounded-lg shadow-sm">
-                            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Submit Your Survey</h2>
-                            <p class="text-gray-700 mb-6">
-                                By clicking submit, your responses will be saved securely and used to establish baseline metrics for the AI pilot programme.
-                            </p>
-                            <button
-                                onclick="saveResponse()"
-                                ${state.loading ? 'disabled' : ''}
-                                class="w-full bg-gradient-to-r from-cyan-500 to-blue-500 text-white py-4 px-6 rounded-lg font-semibold text-lg hover:shadow-lg transition-all disabled:opacity-50"
-                            >
-                                ${state.loading ? 'Submitting...' : 'Submit Survey'}
-                            </button>
-                        </div>
-                    ` : `
-                        <div class="bg-gradient-to-r from-cyan-500 to-blue-500 p-8 rounded-lg text-white text-center">
-                            <h1 class="text-4xl font-bold mb-2">Thank You!</h1>
-                            <p class="text-xl opacity-90">Your responses have been recorded</p>
-                        </div>
-                        
-                        <div class="bg-white p-6 rounded-lg shadow-sm">
-                            <h2 class="text-2xl font-semibold text-gray-800 mb-4">What Happens Next?</h2>
-                            <div class="space-y-4">
-                                <div class="flex items-start space-x-3">
-                                    <div class="bg-cyan-500 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0 font-bold">1</div>
-                                    <div>
-                                        <h3 class="font-semibold text-gray-800">Pilot Launch</h3>
-                                        <p class="text-gray-600 text-sm">You'll receive your LLM tool access (ChatGPT, TeamGPT, or Claude) along with training on best practices and use cases.</p>
-                                    </div>
-                                </div>
-                                <div class="flex items-start space-x-3">
-                                    <div class="bg-cyan-500 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0 font-bold">2</div>
-                                    <div>
-                                        <h3 class="font-semibold text-gray-800">6-Month Trial Period</h3>
-                                        <p class="text-gray-600 text-sm">Use the AI tools in your daily work. We'll check in regularly to share best practices and gather feedback.</p>
-                                    </div>
-                                </div>
-                                <div class="flex items-start space-x-3">
-                                    <div class="bg-cyan-500 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0 font-bold">3</div>
-                                    <div>
-                                        <h3 class="font-semibold text-gray-800">Follow-Up Survey</h3>
-                                        <p class="text-gray-600 text-sm">At the end of the pilot, you'll complete a similar survey so we can measure productivity gains and quality improvements.</p>
-                                    </div>
-                                </div>
-                                <div class="flex items-start space-x-3">
-                                    <div class="bg-cyan-500 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0 font-bold">4</div>
-                                    <div>
-                                        <h3 class="font-semibold text-gray-800">Results & Rollout</h3>
-                                        <p class="text-gray-600 text-sm">We'll present findings to the Board and decide on wider rollout based on measurable productivity and quality gains.</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="bg-cyan-50 border-l-4 border-cyan-500 p-6 rounded-lg">
-                            <h3 class="font-semibold text-cyan-900 mb-2">Success Targets</h3>
-                            <p class="text-gray-700 text-sm mb-3">By the end of the pilot, we're aiming to achieve:</p>
-                            <ul class="space-y-1 text-sm text-gray-700">
-                                <li>• ≥30% reduction in slide creation time</li>
-                                <li>• ≥40% reduction in data preparation time</li>
-                                <li>• ≥25% reduction in proposal drafting time</li>
-                                <li>• 70%+ of AI-assisted drafts client-ready on first pass</li>
-                            </ul>
-                        </div>
-
-                        <div class="text-center">
-                            <p class="text-gray-600 mb-2">Questions about the pilot?</p>
-                            <p class="text-gray-800 font-semibold">Contact: Adam Kearns (Delivery Lead)</p>
-                        </div>
-                    `}
-                </div>`
-            ];
-        }
-
-        // Main render function
-        function render() {
-            const app = document.getElementById('app');
-            if (state.viewMode === 'results') {
-                app.innerHTML = renderResultsDashboard();
-            } else {
-                app.innerHTML = renderSurvey();
-            }
-        }
-
-        // Initial render
-        render();
-    </script>
-</body>
-</html>
+export default AlchemmmySurvey;
